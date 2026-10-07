@@ -15,6 +15,17 @@ struct MediaGridThumbnailCell: View {
     @ObservedObject var photoService: PhotoLibraryService
     
     @State private var thumbnail: UIImage? = nil
+    @State private var requestID: PHImageRequestID? = nil
+    
+    init(asset: PHAsset, isSelectMode: Bool, isSelected: Bool, photoService: PhotoLibraryService) {
+        self.asset = asset
+        self.isSelectMode = isSelectMode
+        self.isSelected = isSelected
+        self.photoService = photoService
+        if let cached = photoService.cachedThumbnail(for: asset.localIdentifier) {
+            self._thumbnail = State(initialValue: cached)
+        }
+    }
     
     var body: some View {
         Color.clear
@@ -32,10 +43,7 @@ struct MediaGridThumbnailCell: View {
                                     .scaledToFill()
                                     .frame(width: proxy.size.width, height: proxy.size.height)
                                     .clipped()
-                            } else {
-                                ProgressView()
-                                    .scaleEffect(0.7)
-                                    .tint(.gray)
+                                    .transition(.opacity.animation(.easeInOut(duration: 0.15)))
                             }
                         }
                         .frame(width: proxy.size.width, height: proxy.size.height)
@@ -106,11 +114,28 @@ struct MediaGridThumbnailCell: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .task(id: asset.localIdentifier) {
-                if thumbnail == nil {
-                    thumbnail = await photoService.loadThumbnail(for: asset, targetSize: CGSize(width: 300, height: 300))
+            .onAppear {
+                loadCellThumbnail()
+            }
+            .onDisappear {
+                if let id = requestID {
+                    photoService.cancelImageRequest(id)
+                    requestID = nil
                 }
             }
+    }
+    
+    private func loadCellThumbnail() {
+        guard thumbnail == nil else { return }
+        if let cached = photoService.cachedThumbnail(for: asset.localIdentifier) {
+            self.thumbnail = cached
+            return
+        }
+        self.requestID = photoService.requestThumbnail(for: asset, targetSize: CGSize(width: 360, height: 360)) { img in
+            if let img = img {
+                self.thumbnail = img
+            }
+        }
     }
     
     private func formatDuration(_ duration: TimeInterval) -> String {

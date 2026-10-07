@@ -81,6 +81,36 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
     // Image Caching Manager
     let imageManager = PHCachingImageManager()
     
+    // High-performance in-memory cache for decoded crisp thumbnails (prevents reload flicker & blur)
+    private let thumbnailCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 600
+        cache.totalCostLimit = 150 * 1024 * 1024 // 150 MB max RAM
+        return cache
+    }()
+    
+    func cachedThumbnail(for assetId: String) -> UIImage? {
+        return thumbnailCache.object(forKey: assetId as NSString)
+    }
+    
+    func cacheThumbnail(_ image: UIImage, for assetId: String) {
+        let cost = Int(image.size.width * image.size.height * 4)
+        thumbnailCache.setObject(image, forKey: assetId as NSString, cost: cost)
+    }
+    
+    func preheatThumbnails(for assets: [PHAsset], targetSize: CGSize = CGSize(width: 400, height: 400)) {
+        guard !assets.isEmpty else { return }
+        let uncached = assets.filter { cachedThumbnail(for: $0.localIdentifier) == nil }
+        guard !uncached.isEmpty else { return }
+        
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .exact
+        
+        imageManager.startCachingImages(for: uncached, targetSize: targetSize, contentMode: .aspectFill, options: options)
+    }
+    
     override init() {
         super.init()
         PHPhotoLibrary.shared().register(self)
@@ -103,8 +133,10 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         self.authorizationStatus = status
         if status == .authorized || status == .limited {
-            performFastInitialKeyAssetFetch()
-            loadLibraryStats()
+            Task { @MainActor in
+                self.performFastInitialKeyAssetFetch()
+                self.loadLibraryStats()
+            }
         } else if status == .notDetermined {
             Task {
                 _ = await requestPermission()
@@ -175,6 +207,17 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
         }
         if self.screenshotsCount == 0 && screenFetch.count > 0 {
             self.screenshotsCount = screenFetch.count
+        }
+        
+        // Immediate background pre-warming of initial key assets
+        let initialAssets = [self.cameraKeyAsset, self.favoritesKeyAsset, self.videosKeyAsset, self.screenshotsKeyAsset].compactMap { $0 }
+        if !initialAssets.isEmpty {
+            self.preheatThumbnails(for: initialAssets, targetSize: CGSize(width: 600, height: 600))
+            for asset in initialAssets {
+                Task.detached(priority: .userInitiated) { [weak self] in
+                    _ = await self?.loadThumbnail(for: asset, targetSize: CGSize(width: 600, height: 600))
+                }
+            }
         }
     }
     
@@ -314,20 +357,46 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
         self.videosKeyAsset = result.videosKeyAsset
         self.screenshotsKeyAsset = result.screenshotsKeyAsset
         self.userAlbums = result.userAlbums
+        
+        // Background pre-warming of all key album assets in memory cache
+        let albumKeyAssets = [
+            result.cameraKeyAsset,
+            result.favoritesKeyAsset,
+            result.videosKeyAsset,
+            result.screenshotsKeyAsset
+        ].compactMap { $0 } + result.userAlbums.compactMap { $0.keyAsset }
+        
+        if !albumKeyAssets.isEmpty {
+            self.preheatThumbnails(for: albumKeyAssets, targetSize: CGSize(width: 600, height: 600))
+            for asset in albumKeyAssets {
+                Task.detached(priority: .userInitiated) { [weak self] in
+                    _ = await self?.loadThumbnail(for: asset, targetSize: CGSize(width: 600, height: 600))
+                }
+            }
+        }
     }
     
-    // MARK: - Progressive High-Quality Thumbnail Fetching (Auto-upgrades from cache to full crisp image)
+    // MARK: - Crisp High-Quality Thumbnail Fetching (Never returns blurry low-res proxy)
     @discardableResult
-    func loadProgressiveThumbnail(
+    func loadHighQualityThumbnail(
         for asset: PHAsset?,
         targetSize: CGSize = CGSize(width: 600, height: 600),
         onImage: @escaping @MainActor (UIImage) -> Void
     ) -> PHImageRequestID? {
         guard let asset = asset else { return nil }
         
+        // Fast in-memory cache check: 0ms return if already loaded
+        let cacheKey = "\(asset.localIdentifier)_\(Int(targetSize.width))"
+        if let cached = thumbnailCache.object(forKey: cacheKey as NSString) ?? thumbnailCache.object(forKey: asset.localIdentifier as NSString) {
+            Task { @MainActor in
+                onImage(cached)
+            }
+            return nil
+        }
+        
         let options = PHImageRequestOptions()
         options.isNetworkAccessAllowed = true
-        options.deliveryMode = .opportunistic
+        options.deliveryMode = .highQualityFormat
         options.resizeMode = .fast
         options.isSynchronous = false
         
@@ -336,17 +405,90 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
             targetSize: targetSize,
             contentMode: .aspectFill,
             options: options
-        ) { image, _ in
+        ) { [weak self] image, info in
             guard let image = image else { return }
+            let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+            // Strict check: NEVER deliver degraded blurry images to the UI!
+            guard !isDegraded else { return }
+            
+            let cost = Int(image.size.width * image.size.height * 4)
+            self?.thumbnailCache.setObject(image, forKey: cacheKey as NSString, cost: cost)
+            self?.thumbnailCache.setObject(image, forKey: asset.localIdentifier as NSString, cost: cost)
+            
             Task { @MainActor in
                 onImage(image)
             }
         }
     }
     
+    // Legacy alias to ensure backwards compatibility
+    @discardableResult
+    func loadProgressiveThumbnail(
+        for asset: PHAsset?,
+        targetSize: CGSize = CGSize(width: 600, height: 600),
+        onImage: @escaping @MainActor (UIImage) -> Void
+    ) -> PHImageRequestID? {
+        return loadHighQualityThumbnail(for: asset, targetSize: targetSize, onImage: onImage)
+    }
+    
+    // MARK: - Direct Non-Blocking Thumbnail Request with Cancellation
+    @discardableResult
+    func requestThumbnail(
+        for asset: PHAsset,
+        targetSize: CGSize = CGSize(width: 360, height: 360),
+        onImage: @escaping @MainActor (UIImage?) -> Void
+    ) -> PHImageRequestID? {
+        let cacheKey = "\(asset.localIdentifier)_\(Int(targetSize.width))"
+        if let cached = thumbnailCache.object(forKey: cacheKey as NSString) ?? thumbnailCache.object(forKey: asset.localIdentifier as NSString) {
+            onImage(cached)
+            return nil
+        }
+        
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .fast
+        options.isSynchronous = false
+        
+        return imageManager.requestImage(
+            for: asset,
+            targetSize: targetSize,
+            contentMode: .aspectFill,
+            options: options
+        ) { [weak self] image, info in
+            guard let image = image else {
+                Task { @MainActor in onImage(nil) }
+                return
+            }
+            let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+            guard !isDegraded else { return }
+            
+            let cost = Int(image.size.width * image.size.height * 4)
+            self?.thumbnailCache.setObject(image, forKey: cacheKey as NSString, cost: cost)
+            self?.thumbnailCache.setObject(image, forKey: asset.localIdentifier as NSString, cost: cost)
+            
+            Task { @MainActor in
+                onImage(image)
+            }
+        }
+    }
+    
+    func cancelImageRequest(_ requestID: PHImageRequestID) {
+        imageManager.cancelImageRequest(requestID)
+    }
+    
     // MARK: - Asynchronous High-Quality Thumbnail Fetching
-    func loadThumbnail(for asset: PHAsset?, targetSize: CGSize = CGSize(width: 600, height: 600)) async -> UIImage? {
+    func loadThumbnail(for asset: PHAsset?, targetSize: CGSize = CGSize(width: 360, height: 360)) async -> UIImage? {
         guard let asset = asset else { return nil }
+        
+        // Fast in-memory cache lookup
+        let cacheKey = "\(asset.localIdentifier)_\(Int(targetSize.width))"
+        if let cached = thumbnailCache.object(forKey: cacheKey as NSString) {
+            return cached
+        }
+        if let generalCached = thumbnailCache.object(forKey: asset.localIdentifier as NSString) {
+            return generalCached
+        }
         
         let options = PHImageRequestOptions()
         options.isNetworkAccessAllowed = true
@@ -361,13 +503,18 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
                 targetSize: targetSize,
                 contentMode: .aspectFill,
                 options: options
-            ) { image, info in
-                if !hasResumed {
-                    let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                    if !isDegraded || (info?[PHImageErrorKey] != nil) || (info?[PHImageCancelledKey] != nil) {
-                        hasResumed = true
-                        continuation.resume(returning: image)
-                    }
+            ) { [weak self] image, info in
+                guard !hasResumed else { return }
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                if let image = image, !isDegraded {
+                    hasResumed = true
+                    let cost = Int(image.size.width * image.size.height * 4)
+                    self?.thumbnailCache.setObject(image, forKey: cacheKey as NSString, cost: cost)
+                    self?.thumbnailCache.setObject(image, forKey: asset.localIdentifier as NSString, cost: cost)
+                    continuation.resume(returning: image)
+                } else if info?[PHImageErrorKey] != nil || info?[PHImageCancelledKey] != nil {
+                    hasResumed = true
+                    continuation.resume(returning: image)
                 }
             }
         }
@@ -452,7 +599,7 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
         let options = PHImageRequestOptions()
         options.isNetworkAccessAllowed = true
         options.deliveryMode = .highQualityFormat
-        options.resizeMode = .fast
+        options.resizeMode = .exact
         options.isSynchronous = false
         
         let targetSize = CGSize(
@@ -468,15 +615,14 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
                 contentMode: .aspectFit,
                 options: options
             ) { image, info in
+                guard !hasResumed else { return }
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                if let image = image, (!isDegraded || hasResumed == false) {
-                    if !hasResumed {
-                        hasResumed = true
-                        continuation.resume(returning: image)
-                    }
-                } else if image == nil && !hasResumed {
+                if let image = image, !isDegraded {
                     hasResumed = true
-                    continuation.resume(returning: nil)
+                    continuation.resume(returning: image)
+                } else if info?[PHImageErrorKey] != nil || info?[PHImageCancelledKey] != nil {
+                    hasResumed = true
+                    continuation.resume(returning: image)
                 }
             }
         }

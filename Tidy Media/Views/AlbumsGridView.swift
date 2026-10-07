@@ -15,6 +15,7 @@ struct AlbumsGridView: View {
     var zoomNamespace: Namespace.ID? = nil
     
     @State private var showRecentlyDeleted: Bool = false
+    @State private var showStorageDetails: Bool = false
     
     // 2-Column Grid for the 4 Pinned Categories
     private let pinnedColumns = [
@@ -68,6 +69,18 @@ struct AlbumsGridView: View {
                                 UIApplication.shared.open(url)
                             }
                         }
+                    }
+                    
+                    // MARK: - 0. Storage Breakdown Dashboard
+                    if !viewModel.isSearchPresented {
+                        StorageDashboardCard(
+                            storageService: viewModel.storageService,
+                            viewModel: viewModel,
+                            onOpenDetails: {
+                                showStorageDetails = true
+                            }
+                        )
+                        .padding(.horizontal, 16)
                     }
                     
                     // MARK: - 1. Pinned Top 4 Categories (2-Column Grid, Large)
@@ -198,9 +211,14 @@ struct AlbumsGridView: View {
             RecentlyDeletedView()
                 .navigationBarBackButtonHidden(true)
         }
+        .navigationDestination(isPresented: $showStorageDetails) {
+            StorageDetailsView(viewModel: viewModel)
+                .navigationBarBackButtonHidden(true)
+        }
         .task {
             if photoService.authorizationStatus == .authorized || photoService.authorizationStatus == .limited {
                 photoService.loadLibraryStats()
+                viewModel.storageService.recalculate()
             }
         }
         .onAppear {

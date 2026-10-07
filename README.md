@@ -7,8 +7,7 @@ Tidy Media is a native iOS gallery cleaner and media organizer designed to help 
 
 ## ✨ Features
 
-Tidy Media focuses on six core media-management categories:
-
+- 📊 **Storage Dashboard & Recoverable Calculator** — Live breakdown of library storage (Videos, Photos, Screenshots) with an actionable *"⚡ Free up ~X GB"* badge.
 - 📸 **Screenshots** — Find all screenshots in one dedicated place.
 - 🎥 **Videos** — Browse all videos in the Photos library.
 - 🔄 **Duplicate Photos** — Find exact duplicate photos and group them for cleanup.
@@ -115,6 +114,7 @@ Tidy-Media/
 │   ├── Services/
 │   │   ├── PhotoLibraryService.swift
 │   │   ├── MediaScannerService.swift
+│   │   ├── StorageCalculatorService.swift
 │   │   └── RecentlyDeletedService.swift
 │   ├── Theme/
 │   │   └── AppTheme.swift
@@ -126,6 +126,7 @@ Tidy-Media/
 │   │   ├── MediaGridView.swift
 │   │   ├── GroupMediaDetailView.swift
 │   │   ├── RecentlyDeletedView.swift
+│   │   ├── StorageDetailsView.swift
 │   │   └── Components/
 │   └── Assets.xcassets/
 ├── assets/

@@ -100,7 +100,7 @@ struct FullScreenMediaView: View {
             }
             
             // Top Floating Navigation Bar
-            if isControlsVisible, let asset = currentAsset {
+            if isControlsVisible, currentAsset != nil {
                 VStack {
                     HStack(spacing: 12) {
                         // Close Button (Left)
@@ -300,18 +300,20 @@ struct SinglePhotoPageView: View {
         self.onTap = onTap
         
         // Fast synchronous check of memory cache so preview opens immediately populated with zero blink
-        let options = PHImageRequestOptions()
-        options.isSynchronous = true
-        options.deliveryMode = .fastFormat
-        options.resizeMode = .fast
-        var cachedImg: UIImage? = nil
-        photoService.imageManager.requestImage(
-            for: asset,
-            targetSize: CGSize(width: 600, height: 600),
-            contentMode: .aspectFit,
-            options: options
-        ) { img, _ in
-            cachedImg = img
+        var cachedImg: UIImage? = photoService.cachedThumbnail(for: asset.localIdentifier)
+        if cachedImg == nil {
+            let options = PHImageRequestOptions()
+            options.isSynchronous = true
+            options.deliveryMode = .fastFormat
+            options.resizeMode = .fast
+            photoService.imageManager.requestImage(
+                for: asset,
+                targetSize: CGSize(width: 600, height: 600),
+                contentMode: .aspectFit,
+                options: options
+            ) { img, _ in
+                cachedImg = img
+            }
         }
         self._displayImage = State(initialValue: cachedImg)
     }
@@ -554,7 +556,7 @@ struct SinglePhotoPageView: View {
                     forName: .AVPlayerItemDidPlayToEndTime,
                     object: item,
                     queue: .main
-                ) { [weak newPlayer] _ in
+                ) { _ in
                     self.isPlaying = false
                     self.isEnded = true
                 }

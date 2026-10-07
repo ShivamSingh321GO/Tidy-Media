@@ -15,6 +15,14 @@ struct AlbumCardView: View {
     @State private var thumbnailImage: UIImage? = nil
     @State private var isLoadingImage: Bool = false
     
+    init(item: AlbumItem, photoService: PhotoLibraryService) {
+        self.item = item
+        self.photoService = photoService
+        if let asset = item.keyAsset, let cached = photoService.cachedThumbnail(for: asset.localIdentifier) {
+            self._thumbnailImage = State(initialValue: cached)
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 8) {
             // Album Thumbnail Box
@@ -74,8 +82,12 @@ struct AlbumCardView: View {
             thumbnailImage = nil
             return
         }
+        if let cached = photoService.cachedThumbnail(for: asset.localIdentifier) {
+            self.thumbnailImage = cached
+            return
+        }
         isLoadingImage = true
-        photoService.loadProgressiveThumbnail(for: asset, targetSize: CGSize(width: 600, height: 600)) { img in
+        photoService.loadHighQualityThumbnail(for: asset, targetSize: CGSize(width: 600, height: 600)) { img in
             self.thumbnailImage = img
             self.isLoadingImage = false
         }

@@ -20,6 +20,12 @@ struct AlbumDetailView: View {
     @State private var viewerIndex: Int? = nil
     @State private var showDeleteAlert: Bool = false
     
+    init(album: AlbumItem, photoService: PhotoLibraryService) {
+        self.album = album
+        self.photoService = photoService
+        self._fetchResult = State(initialValue: photoService.fetchAssets(for: album))
+    }
+    
     // 3-Column Square Grid matching Image 2 & 3
     private let columns = [
         GridItem(.flexible(), spacing: 5),
@@ -239,8 +245,15 @@ struct AlbumDetailView: View {
         } message: {
             Text("These items will be permanently removed from your Photos library.")
         }
-        .task {
-            loadAssets()
+        .onAppear {
+            if let results = fetchResult, results.count > 0 {
+                let count = min(results.count, 45)
+                var initialAssets: [PHAsset] = []
+                for i in 0..<count {
+                    initialAssets.append(results.object(at: i))
+                }
+                photoService.preheatThumbnails(for: initialAssets, targetSize: CGSize(width: 360, height: 360))
+            }
         }
     }
     
@@ -260,7 +273,16 @@ struct AlbumDetailView: View {
     }
     
     private func loadAssets() {
-        self.fetchResult = photoService.fetchAssets(for: album)
+        let results = photoService.fetchAssets(for: album)
+        self.fetchResult = results
+        if results.count > 0 {
+            let count = min(results.count, 45)
+            var initialAssets: [PHAsset] = []
+            for i in 0..<count {
+                initialAssets.append(results.object(at: i))
+            }
+            photoService.preheatThumbnails(for: initialAssets, targetSize: CGSize(width: 360, height: 360))
+        }
     }
     
     private func deleteSelected() {

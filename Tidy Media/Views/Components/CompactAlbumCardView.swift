@@ -15,6 +15,14 @@ struct CompactAlbumCardView: View {
     @State private var thumbnailImage: UIImage? = nil
     @State private var isLoadingImage: Bool = false
     
+    init(item: AlbumItem, photoService: PhotoLibraryService) {
+        self.item = item
+        self.photoService = photoService
+        if let asset = item.keyAsset, let cached = photoService.cachedThumbnail(for: asset.localIdentifier) {
+            self._thumbnailImage = State(initialValue: cached)
+        }
+    }
+    
     var body: some View {
         ZStack(alignment: .bottom) {
             // Background Image or Placeholder Gradient
@@ -31,6 +39,7 @@ struct CompactAlbumCardView: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                         .clipped()
+                        .transition(.opacity.animation(.easeInOut(duration: 0.25)))
                 } else {
                     Image(systemName: item.systemIcon)
                         .font(.system(size: 24, weight: .light))
@@ -87,8 +96,12 @@ struct CompactAlbumCardView: View {
             thumbnailImage = nil
             return
         }
+        if let cached = photoService.cachedThumbnail(for: asset.localIdentifier) {
+            self.thumbnailImage = cached
+            return
+        }
         isLoadingImage = true
-        photoService.loadProgressiveThumbnail(for: asset, targetSize: CGSize(width: 400, height: 400)) { img in
+        photoService.loadHighQualityThumbnail(for: asset, targetSize: CGSize(width: 400, height: 400)) { img in
             self.thumbnailImage = img
             self.isLoadingImage = false
         }

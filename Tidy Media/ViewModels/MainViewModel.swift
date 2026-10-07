@@ -17,16 +17,21 @@ final class MainViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published var selectedAlbum: AlbumItem? = nil
     @Published var isFullScreenViewerOpen: Bool = false
+    @Published var activePhotoFilter: PhotoFilterOption = .all
+    @Published var activeVideoFilter: VideoFilterOption = .all
     
-    // Photo Service
+    // Services
     let photoService = PhotoLibraryService.shared
+    let storageService = StorageCalculatorService.shared
     private var cancellables = Set<AnyCancellable>()
     
     init() {
         photoService.objectWillChange
             .receive(on: RunLoop.main)
+            .debounce(for: .milliseconds(400), scheduler: RunLoop.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
+                self?.storageService.recalculate()
             }
             .store(in: &cancellables)
     }
@@ -150,7 +155,30 @@ final class MainViewModel: ObservableObject {
         }
     }
     
+    func navigateToDuplicates() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        activePhotoFilter = .duplicates
+        selectTab(.photos)
+    }
+    
+    func openScreenshotsAlbum() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let screenshotsItem = AlbumItem(
+            id: "screenshots",
+            title: "Screenshots",
+            count: photoService.screenshotsCount,
+            keyAsset: photoService.screenshotsKeyAsset,
+            systemIcon: "iphone.gen3",
+            gradient: AlbumCategoryType.screenshots.placeholderGradient,
+            isPinned: true,
+            belongsToTabs: [.all, .photos],
+            categoryType: .screenshots
+        )
+        self.selectedAlbum = screenshotsItem
+    }
+    
     func refresh() {
         photoService.loadLibraryStats()
+        storageService.recalculate(force: true)
     }
 }

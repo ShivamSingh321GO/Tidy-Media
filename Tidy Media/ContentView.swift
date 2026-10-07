@@ -12,6 +12,7 @@ struct ContentView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @StateObject private var viewModel = MainViewModel()
     @State private var isShowingLaunchScreen: Bool = true
+    @State private var visitedTabs: Set<MediaTab> = [.all]
     @Namespace private var tabNamespace
     @Namespace private var albumZoomNamespace
     @Environment(\.scenePhase) private var scenePhase
@@ -48,8 +49,8 @@ struct ContentView: View {
         }
         .tint(Color.appAccent)
         .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) {
-                withAnimation(.easeInOut(duration: 0.35)) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                withAnimation(.easeInOut(duration: 0.3)) {
                     isShowingLaunchScreen = false
                 }
             }
@@ -74,28 +75,38 @@ struct ContentView: View {
                 Color(uiColor: .systemBackground).ignoresSafeArea()
                 
                 // Main Content: All (Categories Dashboard), Photos (All Photos Grid), Videos (All Videos Grid)
-                Group {
-                    switch viewModel.selectedTab {
-                    case .all:
-                        AlbumsGridView(viewModel: viewModel, zoomNamespace: albumZoomNamespace)
-                            .id("all")
-                    case .photos:
+                ZStack {
+                    AlbumsGridView(viewModel: viewModel, zoomNamespace: albumZoomNamespace)
+                        .opacity(viewModel.selectedTab == .all ? 1 : 0)
+                        .allowsHitTesting(viewModel.selectedTab == .all)
+                        .zIndex(viewModel.selectedTab == .all ? 1 : 0)
+                    
+                    if visitedTabs.contains(.photos) {
                         MediaGridView(
                             mediaTab: .photos,
                             photoService: viewModel.photoService,
                             viewModel: viewModel
                         )
-                        .id("photos")
-                    case .videos:
+                        .opacity(viewModel.selectedTab == .photos ? 1 : 0)
+                        .allowsHitTesting(viewModel.selectedTab == .photos)
+                        .zIndex(viewModel.selectedTab == .photos ? 1 : 0)
+                    }
+                    
+                    if visitedTabs.contains(.videos) {
                         MediaGridView(
                             mediaTab: .videos,
                             photoService: viewModel.photoService,
                             viewModel: viewModel
                         )
-                        .id("videos")
+                        .opacity(viewModel.selectedTab == .videos ? 1 : 0)
+                        .allowsHitTesting(viewModel.selectedTab == .videos)
+                        .zIndex(viewModel.selectedTab == .videos ? 1 : 0)
                     }
                 }
-                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.2), value: viewModel.selectedTab)
+                .onChange(of: viewModel.selectedTab) { _, newTab in
+                    visitedTabs.insert(newTab)
+                }
                 
                 // Floating Apple Platter Bar (Hidden when viewing fullscreen photo/video)
                 if !viewModel.isFullScreenViewerOpen {

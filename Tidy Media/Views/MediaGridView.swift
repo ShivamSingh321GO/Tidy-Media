@@ -63,6 +63,7 @@ struct MediaGridView: View {
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     withAnimation(.easeInOut(duration: 0.2)) {
                                         selectedFilter = option
+                                        viewModel.activePhotoFilter = option
                                         if option == .all {
                                             selectedAssetIds.removeAll()
                                             isSelectMode = false
@@ -91,6 +92,7 @@ struct MediaGridView: View {
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     withAnimation(.easeInOut(duration: 0.2)) {
                                         selectedVideoFilter = option
+                                        viewModel.activeVideoFilter = option
                                         if option == .all {
                                             selectedAssetIds.removeAll()
                                             isSelectMode = false
@@ -277,8 +279,32 @@ struct MediaGridView: View {
         }
         .task(id: mediaTab) {
             loadAssets()
-            if mediaTab == .videos && selectedVideoFilter != .all {
-                handleVideoFilterTrigger(selectedVideoFilter)
+            if mediaTab == .photos {
+                if viewModel.activePhotoFilter != selectedFilter {
+                    selectedFilter = viewModel.activePhotoFilter
+                }
+                if selectedFilter != .all {
+                    handleFilterTrigger(selectedFilter)
+                }
+            } else if mediaTab == .videos {
+                if viewModel.activeVideoFilter != selectedVideoFilter {
+                    selectedVideoFilter = viewModel.activeVideoFilter
+                }
+                if selectedVideoFilter != .all {
+                    handleVideoFilterTrigger(selectedVideoFilter)
+                }
+            }
+        }
+        .onChange(of: viewModel.activePhotoFilter) { _, newFilter in
+            if mediaTab == .photos && selectedFilter != newFilter {
+                selectedFilter = newFilter
+                handleFilterTrigger(newFilter)
+            }
+        }
+        .onChange(of: viewModel.activeVideoFilter) { _, newFilter in
+            if mediaTab == .videos && selectedVideoFilter != newFilter {
+                selectedVideoFilter = newFilter
+                handleVideoFilterTrigger(newFilter)
             }
         }
         .onReceive(photoService.$totalPhotosCount) { _ in
@@ -1249,6 +1275,16 @@ struct MediaGridView: View {
             self.fetchResult = photoService.fetchAllPhotos()
         } else {
             self.fetchResult = photoService.fetchAllVideos()
+        }
+        
+        // Pre-warm initial visible thumbnails in PhotoKit cache
+        if let results = fetchResult, results.count > 0 {
+            let countToPreheat = min(results.count, 45)
+            var initialAssets: [PHAsset] = []
+            for i in 0..<countToPreheat {
+                initialAssets.append(results.object(at: i))
+            }
+            photoService.preheatThumbnails(for: initialAssets, targetSize: CGSize(width: 400, height: 400))
         }
     }
     
