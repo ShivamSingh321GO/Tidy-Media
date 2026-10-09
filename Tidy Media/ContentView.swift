@@ -81,7 +81,7 @@ struct ContentView: View {
                         .allowsHitTesting(viewModel.selectedTab == .all)
                         .zIndex(viewModel.selectedTab == .all ? 1 : 0)
                     
-                    if visitedTabs.contains(.photos) {
+                    if visitedTabs.contains(.photos) || viewModel.selectedTab == .photos {
                         MediaGridView(
                             mediaTab: .photos,
                             photoService: viewModel.photoService,
@@ -92,7 +92,7 @@ struct ContentView: View {
                         .zIndex(viewModel.selectedTab == .photos ? 1 : 0)
                     }
                     
-                    if visitedTabs.contains(.videos) {
+                    if visitedTabs.contains(.videos) || viewModel.selectedTab == .videos {
                         MediaGridView(
                             mediaTab: .videos,
                             photoService: viewModel.photoService,

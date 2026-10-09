@@ -425,232 +425,311 @@ struct StorageDetailsView: View {
     @Environment(\.dismiss) private var dismiss
     
     @State private var selectedSliceName: String? = nil
+    @State private var selectedDestinationAlbum: AlbumItem? = nil
+    @State private var showDuplicatesView: Bool = false
+    
+    // Direct album destinations for instant 1-tap browsing
+    private var photosAlbum: AlbumItem {
+        AlbumItem(
+            id: "camera",
+            title: "Photos",
+            count: viewModel.photoService.totalPhotosCount,
+            keyAsset: viewModel.photoService.cameraKeyAsset,
+            systemIcon: "photo.fill",
+            gradient: AlbumCategoryType.camera.placeholderGradient,
+            isPinned: true,
+            belongsToTabs: [.all, .photos],
+            categoryType: .camera
+        )
+    }
+    
+    private var videosAlbum: AlbumItem {
+        AlbumItem(
+            id: "videos",
+            title: "Videos",
+            count: viewModel.photoService.totalVideosCount,
+            keyAsset: viewModel.photoService.videosKeyAsset,
+            systemIcon: "play.rectangle.fill",
+            gradient: AlbumCategoryType.videos.placeholderGradient,
+            isPinned: true,
+            belongsToTabs: [.all, .videos],
+            categoryType: .videos
+        )
+    }
+    
+    private var screenshotsAlbum: AlbumItem {
+        AlbumItem(
+            id: "screenshots",
+            title: "Screenshots",
+            count: viewModel.photoService.screenshotsCount,
+            keyAsset: viewModel.photoService.screenshotsKeyAsset,
+            systemIcon: "iphone.gen3",
+            gradient: AlbumCategoryType.screenshots.placeholderGradient,
+            isPinned: true,
+            belongsToTabs: [.all, .photos],
+            categoryType: .screenshots
+        )
+    }
     
     var body: some View {
         let breakdown = storageService.breakdown
         
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 20) {
-                // MARK: - 1. Top Custom Navigation Bar
-                HStack(alignment: .center) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        dismiss()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .semibold))
-                            Text("Albums")
-                                .font(.system(size: 16, weight: .medium))
+        ScrollViewReader { scrollProxy in
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    // MARK: - 1. Top Custom Navigation Bar
+                    HStack(alignment: .center) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text("Albums")
+                                    .font(.system(size: 16, weight: .medium))
+                            }
+                            .foregroundColor(Color.appAccent)
                         }
-                        .foregroundColor(Color.appAccent)
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Spacer()
-                    
-                    Text("Storage Details")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundColor(.primary)
-                    
-                    Spacer()
-                    
-                    // Balance space
-                    Color.clear.frame(width: 70, height: 20)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                
-                // MARK: - 2. Spherical Sunburst Donut Pie Chart Card (Image 3)
-                VStack(spacing: 16) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("LIBRARY BREAKDOWN")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundColor(.secondary)
-                                .tracking(0.6)
-                            
-                            Text("Capacity Distribution")
-                                .font(.system(size: 20, weight: .bold, design: .rounded))
-                                .foregroundColor(.primary)
-                        }
+                        .buttonStyle(.plain)
                         
                         Spacer()
                         
-                        // Device capacity badge
-                        Text(StorageCalculatorService.deviceTotalCapacityFormatted)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 9)
+                        Text("Storage Details")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.primary)
+                        
+                        Spacer()
+                        
+                        // Balance space
+                        Color.clear.frame(width: 70, height: 20)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    
+                    // MARK: - 2. Spherical Sunburst Donut Pie Chart Card (Image 3)
+                    VStack(spacing: 16) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("LIBRARY BREAKDOWN")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundColor(.secondary)
+                                    .tracking(0.6)
+                                
+                                Text("Capacity Distribution")
+                                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                                    .foregroundColor(.primary)
+                            }
+                            
+                            Spacer()
+                            
+                            // Device capacity badge
+                            Text(StorageCalculatorService.deviceTotalCapacityFormatted)
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule().fill(Color(uiColor: .tertiarySystemBackground))
+                                )
+                        }
+                        
+                        // Touch Instruction or Active Selection Pill
+                        if let selected = selectedSliceName {
+                            HStack(spacing: 6) {
+                                Text("Inspecting: \(selected)")
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.primary)
+                                
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                        selectedSliceName = nil
+                                    }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 10)
                             .padding(.vertical, 4)
                             .background(
                                 Capsule().fill(Color(uiColor: .tertiarySystemBackground))
                             )
-                    }
-                    
-                    // Touch Instruction or Active Selection Pill
-                    if let selected = selectedSliceName {
-                        HStack(spacing: 6) {
-                            Text("Inspecting: \(selected)")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .foregroundColor(.primary)
-                            
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                    selectedSliceName = nil
+                            .transition(.scale.combined(with: .opacity))
+                        } else {
+                            Text("Touch or drag slices to inspect")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundColor(.secondary.opacity(0.8))
+                                .transition(.opacity)
+                        }
+                        
+                        // Interactive Sunburst Multi-Layer Pie Chart
+                        SunburstStoragePieView(
+                            breakdown: breakdown,
+                            selectedSliceName: $selectedSliceName,
+                            chartSize: 230
+                        )
+                        .padding(.vertical, 6)
+                        
+                        // Radial Callout Badges (Exact Callouts from Image 3, Tappable & Scrolls to Category)
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            calloutBadge(
+                                title: "Photos",
+                                ratioText: ratioString(bytes: breakdown.photosBytes),
+                                color: Color(red: 0.10, green: 0.72, blue: 0.48),
+                                isSelected: selectedSliceName == "Photos" || selectedSliceName?.contains("Photo") == true,
+                                onTap: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        selectedSliceName = "Photos"
+                                        scrollProxy.scrollTo("card_photos", anchor: .top)
+                                    }
                                 }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(.secondary)
+                            )
+                            calloutBadge(
+                                title: "Videos",
+                                ratioText: ratioString(bytes: breakdown.videosBytes),
+                                color: Color(red: 0.14, green: 0.44, blue: 0.96),
+                                isSelected: selectedSliceName == "Videos" || selectedSliceName?.contains("Video") == true,
+                                onTap: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        selectedSliceName = "Videos"
+                                        scrollProxy.scrollTo("card_videos", anchor: .top)
+                                    }
+                                }
+                            )
+                            calloutBadge(
+                                title: "Duplicates",
+                                ratioText: ratioString(bytes: breakdown.recoverableBytes),
+                                color: Color(red: 0.95, green: 0.28, blue: 0.42),
+                                isSelected: selectedSliceName == "Duplicates" || selectedSliceName?.contains("Duplicate") == true,
+                                onTap: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        selectedSliceName = "Duplicates"
+                                        scrollProxy.scrollTo("card_duplicates", anchor: .top)
+                                    }
+                                }
+                            )
+                            calloutBadge(
+                                title: "Screenshots",
+                                ratioText: ratioString(bytes: breakdown.screenshotsBytes),
+                                color: Color(red: 0.98, green: 0.60, blue: 0.15),
+                                isSelected: selectedSliceName == "Screenshots",
+                                onTap: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        selectedSliceName = "Screenshots"
+                                        scrollProxy.scrollTo("card_screenshots", anchor: .top)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    .padding(18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(Color(uiColor: .secondarySystemBackground))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.8)
+                    )
+                    .padding(.horizontal, 16)
+                    
+                    // MARK: - 3. Detailed Category Cards
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Category Details")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                        
+                        // A. Photos Detailed Card
+                        detailedCategoryCard(
+                            icon: "photo.fill",
+                            iconColor: Color(red: 0.10, green: 0.72, blue: 0.48),
+                            title: "Photos & Images",
+                            totalSize: breakdown.formattedPhotosSize,
+                            totalCount: "\(breakdown.photosCount) items",
+                            subItems: [
+                                ("Camera Roll Photos", "\(max(0, breakdown.photosCount - breakdown.screenshotsCount)) items"),
+                                ("Favorite Photos", "\(viewModel.photoService.favoritesCount) items")
+                            ],
+                            actionTitle: "Browse Photos",
+                            action: {
+                                selectedDestinationAlbum = photosAlbum
                             }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule().fill(Color(uiColor: .tertiarySystemBackground))
                         )
-                        .transition(.scale.combined(with: .opacity))
-                    } else {
-                        Text("Touch or drag slices to inspect")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundColor(.secondary.opacity(0.8))
-                            .transition(.opacity)
-                    }
-                    
-                    // Interactive Sunburst Multi-Layer Pie Chart
-                    SunburstStoragePieView(
-                        breakdown: breakdown,
-                        selectedSliceName: $selectedSliceName,
-                        chartSize: 230
-                    )
-                    .padding(.vertical, 6)
-                    
-                    // Radial Callout Badges (Exact Callouts from Image 3, Tappable)
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                        calloutBadge(
-                            title: "Photos",
-                            ratioText: ratioString(bytes: breakdown.photosBytes),
-                            color: Color(red: 0.10, green: 0.72, blue: 0.48),
-                            isSelected: selectedSliceName == "Photos" || selectedSliceName?.contains("Photo") == true
+                        .id("card_photos")
+                        
+                        // B. Videos Detailed Card
+                        detailedCategoryCard(
+                            icon: "play.rectangle.fill",
+                            iconColor: Color(red: 0.14, green: 0.44, blue: 0.96),
+                            title: "Videos & Recordings",
+                            totalSize: breakdown.formattedVideosSize,
+                            totalCount: "\(breakdown.videosCount) clips",
+                            subItems: [
+                                ("Total Video Library", "\(breakdown.videosCount) video assets"),
+                                ("Space Occupied", breakdown.formattedVideosSize)
+                            ],
+                            actionTitle: "Browse Videos",
+                            action: {
+                                selectedDestinationAlbum = videosAlbum
+                            }
                         )
-                        calloutBadge(
-                            title: "Videos",
-                            ratioText: ratioString(bytes: breakdown.videosBytes),
-                            color: Color(red: 0.14, green: 0.44, blue: 0.96),
-                            isSelected: selectedSliceName == "Videos" || selectedSliceName?.contains("Video") == true
+                        .id("card_videos")
+                        
+                        // C. Duplicates / Recoverable Space Detailed Card
+                        detailedCategoryCard(
+                            icon: "doc.on.doc.fill",
+                            iconColor: Color(red: 0.95, green: 0.28, blue: 0.42),
+                            title: "Duplicates & Redundant Media",
+                            totalSize: breakdown.formattedRecoverableSize,
+                            totalCount: "\(breakdown.recoverableCount) redundant copies",
+                            subItems: [
+                                ("Duplicate Photos", "\(breakdown.duplicatePhotosCount) copies (\(StorageCategoryBreakdown.formatBytes(breakdown.duplicatePhotosBytes)))"),
+                                ("Duplicate Videos", "\(breakdown.duplicateVideosCount) copies (\(StorageCategoryBreakdown.formatBytes(breakdown.duplicateVideosBytes)))")
+                            ],
+                            actionTitle: breakdown.recoverableBytes > 0 ? "Review & Clean Duplicates" : "View Duplicates",
+                            isHighlight: breakdown.recoverableBytes > 0,
+                            action: {
+                                showDuplicatesView = true
+                            }
                         )
-                        calloutBadge(
-                            title: "Duplicates",
-                            ratioText: ratioString(bytes: breakdown.recoverableBytes),
-                            color: Color(red: 0.95, green: 0.28, blue: 0.42),
-                            isSelected: selectedSliceName == "Duplicates" || selectedSliceName?.contains("Duplicate") == true
-                        )
-                        calloutBadge(
+                        .id("card_duplicates")
+                        
+                        // D. Screenshots Detailed Card
+                        detailedCategoryCard(
+                            icon: "iphone.gen3",
+                            iconColor: Color(red: 0.98, green: 0.60, blue: 0.15),
                             title: "Screenshots",
-                            ratioText: ratioString(bytes: breakdown.screenshotsBytes),
-                            color: Color(red: 0.98, green: 0.60, blue: 0.15),
-                            isSelected: selectedSliceName == "Screenshots"
+                            totalSize: breakdown.formattedScreenshotsSize,
+                            totalCount: "\(breakdown.screenshotsCount) screenshots",
+                            subItems: [
+                                ("Captured Screens", "\(breakdown.screenshotsCount) items"),
+                                ("Storage Consumed", breakdown.formattedScreenshotsSize)
+                            ],
+                            actionTitle: "Open Screenshots",
+                            action: {
+                                selectedDestinationAlbum = screenshotsAlbum
+                            }
                         )
+                        .id("card_screenshots")
                     }
+                    
+                    Spacer(minLength: 60)
                 }
-                .padding(18)
-                .background(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color(uiColor: .secondarySystemBackground))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.primary.opacity(0.06), lineWidth: 0.8)
-                )
-                .padding(.horizontal, 16)
-                
-                // MARK: - 3. Detailed Category Cards
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Category Details")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 16)
-                    
-                    // A. Photos Detailed Card
-                    detailedCategoryCard(
-                        icon: "photo.fill",
-                        iconColor: Color(red: 0.10, green: 0.72, blue: 0.48),
-                        title: "Photos & Images",
-                        totalSize: breakdown.formattedPhotosSize,
-                        totalCount: "\(breakdown.photosCount) items",
-                        subItems: [
-                            ("Camera Roll Photos", "\(max(0, breakdown.photosCount - breakdown.screenshotsCount)) items"),
-                            ("Favorite Photos", "\(viewModel.photoService.favoritesCount) items")
-                        ],
-                        actionTitle: "Browse Photos",
-                        action: {
-                            dismiss()
-                            viewModel.selectTab(.photos)
-                        }
-                    )
-                    
-                    // B. Videos Detailed Card
-                    detailedCategoryCard(
-                        icon: "play.rectangle.fill",
-                        iconColor: Color(red: 0.14, green: 0.44, blue: 0.96),
-                        title: "Videos & Recordings",
-                        totalSize: breakdown.formattedVideosSize,
-                        totalCount: "\(breakdown.videosCount) clips",
-                        subItems: [
-                            ("Total Video Library", "\(breakdown.videosCount) video assets"),
-                            ("Space Occupied", breakdown.formattedVideosSize)
-                        ],
-                        actionTitle: "Browse Videos",
-                        action: {
-                            dismiss()
-                            viewModel.selectTab(.videos)
-                        }
-                    )
-                    
-                    // C. Duplicates / Recoverable Space Detailed Card
-                    detailedCategoryCard(
-                        icon: "doc.on.doc.fill",
-                        iconColor: Color(red: 0.95, green: 0.28, blue: 0.42),
-                        title: "Duplicates & Redundant Media",
-                        totalSize: breakdown.formattedRecoverableSize,
-                        totalCount: "\(breakdown.recoverableCount) redundant copies",
-                        subItems: [
-                            ("Duplicate Photos", "\(breakdown.duplicatePhotosCount) copies (\(StorageCategoryBreakdown.formatBytes(breakdown.duplicatePhotosBytes)))"),
-                            ("Duplicate Videos", "\(breakdown.duplicateVideosCount) copies (\(StorageCategoryBreakdown.formatBytes(breakdown.duplicateVideosBytes)))")
-                        ],
-                        actionTitle: breakdown.recoverableBytes > 0 ? "Review & Clean Duplicates" : "View Duplicates",
-                        isHighlight: breakdown.recoverableBytes > 0,
-                        action: {
-                            dismiss()
-                            viewModel.navigateToDuplicates()
-                        }
-                    )
-                    
-                    // D. Screenshots Detailed Card
-                    detailedCategoryCard(
-                        icon: "iphone.gen3",
-                        iconColor: Color(red: 0.98, green: 0.60, blue: 0.15),
-                        title: "Screenshots",
-                        totalSize: breakdown.formattedScreenshotsSize,
-                        totalCount: "\(breakdown.screenshotsCount) screenshots",
-                        subItems: [
-                            ("Captured Screens", "\(breakdown.screenshotsCount) items"),
-                            ("Storage Consumed", breakdown.formattedScreenshotsSize)
-                        ],
-                        actionTitle: "Open Screenshots",
-                        action: {
-                            dismiss()
-                            viewModel.openScreenshotsAlbum()
-                        }
-                    )
-                }
-                
-                Spacer(minLength: 60)
+                .padding(.bottom, 24)
             }
-            .padding(.bottom, 24)
+            .navigationDestination(item: $selectedDestinationAlbum) { album in
+                AlbumDetailView(album: album, photoService: viewModel.photoService)
+                    .navigationBarBackButtonHidden(true)
+            }
+            .navigationDestination(isPresented: $showDuplicatesView) {
+                StorageDuplicatesDetailView(viewModel: viewModel)
+                    .navigationBarBackButtonHidden(true)
+            }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
     }
@@ -663,16 +742,16 @@ struct StorageDetailsView: View {
     }
     
     @ViewBuilder
-    private func calloutBadge(title: String, ratioText: String, color: Color, isSelected: Bool) -> some View {
+    private func calloutBadge(
+        title: String,
+        ratioText: String,
+        color: Color,
+        isSelected: Bool,
+        onTap: @escaping () -> Void
+    ) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                if selectedSliceName == title {
-                    selectedSliceName = nil
-                } else {
-                    selectedSliceName = title
-                }
-            }
+            onTap()
         } label: {
             HStack(spacing: 8) {
                 Circle()
@@ -797,6 +876,569 @@ struct StorageDetailsView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(isHighlight ? iconColor.opacity(0.35) : Color.primary.opacity(0.06), lineWidth: isHighlight ? 1.0 : 0.8)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        }
         .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - Storage Duplicates Detail View
+struct StorageDuplicatesDetailView: View {
+    @ObservedObject var viewModel: MainViewModel
+    @ObservedObject private var scannerService = MediaScannerService.shared
+    @ObservedObject private var photoService = PhotoLibraryService.shared
+    @ObservedObject private var storageService = StorageCalculatorService.shared
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var selectedMediaKind: DuplicateMediaKind = .photos
+    @State private var viewerIndex: Int? = nil
+    @State private var viewerFetchResult: PHFetchResult<PHAsset>? = nil
+    @State private var showConfirmDeleteAll: Bool = false
+    @State private var isDeleting: Bool = false
+    
+    enum DuplicateMediaKind: String, CaseIterable, Identifiable {
+        case photos = "Photos"
+        case videos = "Videos"
+        var id: String { rawValue }
+    }
+    
+    private var photoDuplicateCount: Int {
+        scannerService.duplicateGroups.reduce(0) { $0 + $1.duplicateAssets.count }
+    }
+    
+    private var videoDuplicateCount: Int {
+        scannerService.duplicateVideoGroups.reduce(0) { $0 + $1.duplicateAssets.count }
+    }
+    
+    private var currentTotalDuplicates: Int {
+        selectedMediaKind == .photos ? photoDuplicateCount : videoDuplicateCount
+    }
+    
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Color(uiColor: .systemBackground).ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Top Custom Navigation Bar
+                HStack(spacing: 12) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text("Storage")
+                                .font(.system(size: 16, weight: .medium))
+                        }
+                        .foregroundColor(Color.appAccent)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Spacer()
+                    
+                    Text("Duplicate Media")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        triggerRescan()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(Color.appAccent)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
+                
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        // Summary Banner Card
+                        summaryBannerCard
+                        
+                        // Segmented Picker (Photos vs Videos)
+                        Picker("Category", selection: $selectedMediaKind) {
+                            Text("Photos (\(photoDuplicateCount))").tag(DuplicateMediaKind.photos)
+                            Text("Videos (\(videoDuplicateCount))").tag(DuplicateMediaKind.videos)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 16)
+                        
+                        // Content based on selection
+                        if selectedMediaKind == .photos {
+                            photoDuplicatesSection
+                        } else {
+                            videoDuplicatesSection
+                        }
+                        
+                        Spacer(minLength: 120)
+                    }
+                    .padding(.top, 4)
+                }
+            }
+            
+            // Bottom Sticky Clean All Button (if duplicates exist)
+            if currentTotalDuplicates > 0 {
+                bottomActionBar
+            }
+            
+            // Fullscreen viewer overlay
+            if let index = viewerIndex, let results = viewerFetchResult, results.count > 0 {
+                FullScreenMediaView(
+                    fetchResult: results,
+                    initialIndex: index,
+                    onClose: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            viewerIndex = nil
+                            viewerFetchResult = nil
+                        }
+                    },
+                    onDelete: {
+                        triggerRescan()
+                    },
+                    photoService: photoService
+                )
+                .id("dup_viewer_\(index)_\(results.count)")
+                .transition(.opacity)
+                .zIndex(100)
+            }
+        }
+        .task {
+            triggerInitialScanIfNeeded()
+        }
+    }
+    
+    // MARK: - Summary Banner Card
+    private var summaryBannerCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("RECOVERABLE STORAGE")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.8))
+                        .tracking(0.5)
+                    
+                    Text(storageService.breakdown.formattedRecoverableSize)
+                        .font(.system(size: 26, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                
+                Spacer()
+                
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.2))
+                        .frame(width: 44, height: 44)
+                    
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+                }
+            }
+            
+            Text("Keep the original best shot and safely remove redundant copies to reclaim device storage.")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.85))
+                .lineLimit(2)
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.95, green: 0.25, blue: 0.42), Color(red: 0.98, green: 0.45, blue: 0.58)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .shadow(color: Color(red: 0.95, green: 0.25, blue: 0.42).opacity(0.3), radius: 10, x: 0, y: 5)
+        .padding(.horizontal, 16)
+    }
+    
+    // MARK: - Photo Duplicates Section
+    @ViewBuilder
+    private var photoDuplicatesSection: some View {
+        if scannerService.isScanningDuplicates && scannerService.duplicateGroups.isEmpty {
+            VStack(spacing: 12) {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .padding(.top, 40)
+                Text("Analyzing photo library for duplicates...")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+        } else if scannerService.duplicateGroups.isEmpty {
+            emptyStateView(message: "No Duplicate Photos Found", subtitle: "Every photo in your camera roll is unique!")
+        } else {
+            VStack(spacing: 16) {
+                ForEach(scannerService.duplicateGroups) { group in
+                    duplicatePhotoGroupCard(group: group)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+    
+    // MARK: - Video Duplicates Section
+    @ViewBuilder
+    private var videoDuplicatesSection: some View {
+        if scannerService.isScanningDuplicateVideos && scannerService.duplicateVideoGroups.isEmpty {
+            VStack(spacing: 12) {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .padding(.top, 40)
+                Text("Scanning video clips for redundant copies...")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+        } else if scannerService.duplicateVideoGroups.isEmpty {
+            emptyStateView(message: "No Duplicate Videos Found", subtitle: "All videos in your gallery are unique copies.")
+        } else {
+            VStack(spacing: 16) {
+                ForEach(scannerService.duplicateVideoGroups) { group in
+                    duplicateVideoGroupCard(group: group)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+    
+    // MARK: - Duplicate Photo Group Card
+    @ViewBuilder
+    private func duplicatePhotoGroupCard(group: DuplicatePhotoGroup) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                if let date = group.assets.first?.creationDate {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text(date.formatted(date: .abbreviated, time: .shortened))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Spacer()
+                
+                Text("\(group.assets.count) Copies")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(Color(red: 0.95, green: 0.28, blue: 0.42))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule().fill(Color(red: 0.95, green: 0.28, blue: 0.42).opacity(0.12))
+                    )
+            }
+            
+            // Thumbnails Grid
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: min(group.assets.count, 4))
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(0..<group.assets.count, id: \.self) { idx in
+                    let asset = group.assets[idx]
+                    let isKeep = asset.localIdentifier == group.keepAssetId
+                    
+                    ZStack(alignment: .bottomTrailing) {
+                        MediaGridThumbnailCell(
+                            asset: asset,
+                            isSelectMode: false,
+                            isSelected: false,
+                            photoService: photoService
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        
+                        // Badge: KEEP or DUPLICATE
+                        HStack(spacing: 2) {
+                            Image(systemName: isKeep ? "star.fill" : "trash.fill")
+                                .font(.system(size: 7, weight: .bold))
+                            Text(isKeep ? "KEEP" : "DELETE")
+                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2.5)
+                        .background(
+                            Capsule().fill(isKeep ? Color.green : Color.red.opacity(0.9))
+                        )
+                        .padding(4)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        openGroupInViewer(assets: group.assets, selectedIndex: idx)
+                    }
+                }
+            }
+            
+            // Delete Group Redundant Copies Action
+            if !group.duplicateAssets.isEmpty {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    deletePhotoGroupDuplicates(group)
+                } label: {
+                    HStack {
+                        Image(systemName: "trash")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Delete \(group.duplicateAssets.count) Duplicate \(group.duplicateAssets.count == 1 ? "Copy" : "Copies")")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(Color(red: 0.95, green: 0.28, blue: 0.42))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(red: 0.95, green: 0.28, blue: 0.42).opacity(0.1))
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
+    }
+    
+    // MARK: - Duplicate Video Group Card
+    @ViewBuilder
+    private func duplicateVideoGroupCard(group: DuplicateVideoGroup) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Video Duplicates")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                Text("\(group.assets.count) Clips")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(Color(red: 0.14, green: 0.44, blue: 0.96))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule().fill(Color(red: 0.14, green: 0.44, blue: 0.96).opacity(0.12))
+                    )
+            }
+            
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: min(group.assets.count, 4))
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(0..<group.assets.count, id: \.self) { idx in
+                    let asset = group.assets[idx]
+                    let isKeep = asset.localIdentifier == group.keepAssetId
+                    
+                    ZStack(alignment: .bottomTrailing) {
+                        MediaGridThumbnailCell(
+                            asset: asset,
+                            isSelectMode: false,
+                            isSelected: false,
+                            photoService: photoService
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        
+                        HStack(spacing: 2) {
+                            Text(isKeep ? "KEEP" : "DELETE")
+                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2.5)
+                        .background(
+                            Capsule().fill(isKeep ? Color.green : Color.red.opacity(0.9))
+                        )
+                        .padding(4)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        openGroupInViewer(assets: group.assets, selectedIndex: idx)
+                    }
+                }
+            }
+            
+            if !group.duplicateAssets.isEmpty {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    deleteVideoGroupDuplicates(group)
+                } label: {
+                    HStack {
+                        Image(systemName: "trash")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Delete \(group.duplicateAssets.count) Duplicate Video")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(Color(red: 0.95, green: 0.28, blue: 0.42))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(red: 0.95, green: 0.28, blue: 0.42).opacity(0.1))
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
+    }
+    
+    // MARK: - Empty State View
+    private func emptyStateView(message: String, subtitle: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 48))
+                .foregroundColor(.green)
+                .padding(.top, 40)
+            
+            Text(message)
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+            
+            Text(subtitle)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 30)
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    // MARK: - Bottom Floating Clean All Action Bar
+    private var bottomActionBar: some View {
+        VStack {
+            Button {
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                deleteAllDuplicatesInCurrentTab()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 15, weight: .bold))
+                    Text("Delete All \(currentTotalDuplicates) Duplicates")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(red: 0.95, green: 0.25, blue: 0.42))
+                )
+                .shadow(color: Color(red: 0.95, green: 0.25, blue: 0.42).opacity(0.35), radius: 8, x: 0, y: 4)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+        }
+        .background(
+            LinearGradient(
+                colors: [Color(uiColor: .systemBackground).opacity(0.0), Color(uiColor: .systemBackground)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+    
+    // MARK: - Actions & Logic
+    private func openGroupInViewer(assets: [PHAsset], selectedIndex: Int) {
+        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: assets.map(\.localIdentifier), options: nil)
+        self.viewerFetchResult = fetch
+        self.viewerIndex = selectedIndex
+    }
+    
+    private func deletePhotoGroupDuplicates(_ group: DuplicatePhotoGroup) {
+        let targets = group.duplicateAssets
+        guard !targets.isEmpty else { return }
+        Task {
+            do {
+                try await photoService.deleteAssets(targets)
+                await reloadStatsAndScans()
+            } catch {
+                print("Failed to delete duplicates: \(error)")
+            }
+        }
+    }
+    
+    private func deleteVideoGroupDuplicates(_ group: DuplicateVideoGroup) {
+        let targets = group.duplicateAssets
+        guard !targets.isEmpty else { return }
+        Task {
+            do {
+                try await photoService.deleteAssets(targets)
+                await reloadStatsAndScans()
+            } catch {
+                print("Failed to delete duplicate videos: \(error)")
+            }
+        }
+    }
+    
+    private func deleteAllDuplicatesInCurrentTab() {
+        let targets: [PHAsset]
+        if selectedMediaKind == .photos {
+            targets = scannerService.duplicateGroups.flatMap { $0.duplicateAssets }
+        } else {
+            targets = scannerService.duplicateVideoGroups.flatMap { $0.duplicateAssets }
+        }
+        guard !targets.isEmpty else { return }
+        Task {
+            do {
+                try await photoService.deleteAssets(targets)
+                await reloadStatsAndScans()
+            } catch {
+                print("Failed to delete all duplicates: \(error)")
+            }
+        }
+    }
+    
+    private func reloadStatsAndScans() async {
+        photoService.loadLibraryStats()
+        storageService.recalculate(force: true)
+        
+        let photoFetch = photoService.fetchAllPhotos()
+        var pList: [PHAsset] = []
+        for i in 0..<photoFetch.count { pList.append(photoFetch.object(at: i)) }
+        await scannerService.scanDuplicatePhotos(from: pList)
+        
+        let videoFetch = photoService.fetchAllVideos()
+        var vList: [PHAsset] = []
+        for i in 0..<videoFetch.count { vList.append(videoFetch.object(at: i)) }
+        await scannerService.scanDuplicateVideos(from: vList)
+    }
+    
+    private func triggerRescan() {
+        Task {
+            await reloadStatsAndScans()
+        }
+    }
+    
+    private func triggerInitialScanIfNeeded() {
+        Task {
+            if scannerService.duplicateGroups.isEmpty && !scannerService.isScanningDuplicates {
+                let fetch = photoService.fetchAllPhotos()
+                var list: [PHAsset] = []
+                for i in 0..<fetch.count { list.append(fetch.object(at: i)) }
+                await scannerService.scanDuplicatePhotos(from: list)
+            }
+            if scannerService.duplicateVideoGroups.isEmpty && !scannerService.isScanningDuplicateVideos {
+                let fetch = photoService.fetchAllVideos()
+                var list: [PHAsset] = []
+                for i in 0..<fetch.count { list.append(fetch.object(at: i)) }
+                await scannerService.scanDuplicateVideos(from: list)
+            }
+        }
     }
 }
