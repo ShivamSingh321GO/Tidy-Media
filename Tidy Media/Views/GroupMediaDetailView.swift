@@ -40,6 +40,7 @@ struct GroupMediaDetailView: View {
     @State private var selectedAssetIds: Set<String> = []
     @State private var viewerIndex: Int? = nil
     @State private var viewerFetchResult: PHFetchResult<PHAsset>? = nil
+    @State private var viewerSessionId: UUID = UUID()
     @State private var showDeleteAlert: Bool = false
     
     private let columns = [
@@ -138,6 +139,7 @@ struct GroupMediaDetailView: View {
                                         isSelected: isSelected,
                                         photoService: photoService
                                     )
+                                    .id(asset.localIdentifier)
                                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                     .contentShape(Rectangle())
                                     .onTapGesture {
@@ -243,7 +245,7 @@ struct GroupMediaDetailView: View {
                     },
                     photoService: photoService
                 )
-                .id("group_viewer_\(index)_\(results.count)")
+                .id(viewerSessionId)
                 .transition(.opacity)
                 .zIndex(100)
             }
@@ -276,9 +278,17 @@ struct GroupMediaDetailView: View {
         } else {
             let ids = currentAssets.map(\.localIdentifier)
             let fetch = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+            var finalIndex = 0
+            for i in 0..<fetch.count {
+                if fetch.object(at: i).localIdentifier == asset.localIdentifier {
+                    finalIndex = i
+                    break
+                }
+            }
             self.viewerFetchResult = fetch
+            self.viewerSessionId = UUID()
             withAnimation(.easeInOut(duration: 0.22)) {
-                self.viewerIndex = index
+                self.viewerIndex = finalIndex
             }
         }
     }

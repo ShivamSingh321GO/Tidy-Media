@@ -24,6 +24,7 @@ struct MediaGridView: View {
     // Fullscreen Viewer State
     @State private var viewerFetchResult: PHFetchResult<PHAsset>? = nil
     @State private var viewerIndex: Int? = nil
+    @State private var viewerSessionId: UUID = UUID()
     @State private var showDeleteAlert: Bool = false
     @State private var selectedGroupDetail: GroupDetailItem? = nil
     
@@ -244,7 +245,7 @@ struct MediaGridView: View {
                     },
                     photoService: photoService
                 )
-                .id("viewer_\(index)_\(results.count)")
+                .id(viewerSessionId)
                 .transition(.opacity)
                 .zIndex(100)
             }
@@ -340,6 +341,7 @@ struct MediaGridView: View {
                         isSelected: isSelected,
                         photoService: photoService
                     )
+                    .id(asset.localIdentifier)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         handleAssetTap(asset: asset, index: index, in: results)
@@ -448,6 +450,7 @@ struct MediaGridView: View {
                                         isSelected: isSelected,
                                         photoService: photoService
                                     )
+                                    .id(asset.localIdentifier)
                                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                     .onTapGesture {
                                         if hasMoreThanThree {
@@ -612,6 +615,7 @@ struct MediaGridView: View {
                                         isSelected: isSelected,
                                         photoService: photoService
                                     )
+                                    .id(asset.localIdentifier)
                                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                     .onTapGesture {
                                         if hasMoreThanThree {
@@ -724,6 +728,7 @@ struct MediaGridView: View {
                                 isSelected: isSelected,
                                 photoService: photoService
                             )
+                            .id(item.id)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 handleLargeVideoTap(item: item)
@@ -847,6 +852,7 @@ struct MediaGridView: View {
                                         isSelected: isSelected,
                                         photoService: photoService
                                     )
+                                    .id(asset.localIdentifier)
                                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                     .onTapGesture {
                                         if hasMoreThanThree {
@@ -942,9 +948,24 @@ struct MediaGridView: View {
                 selectedAssetIds.insert(asset.localIdentifier)
             }
         } else {
-            let trueIndex = fetchResults.index(of: asset)
-            let finalIndex = (trueIndex != NSNotFound) ? trueIndex : index
+            var finalIndex = index
+            if finalIndex < fetchResults.count && fetchResults.object(at: finalIndex).localIdentifier == asset.localIdentifier {
+                // Exact index confirmed
+            } else {
+                let trueIndex = fetchResults.index(of: asset)
+                if trueIndex != NSNotFound && trueIndex < fetchResults.count {
+                    finalIndex = trueIndex
+                } else {
+                    for i in 0..<fetchResults.count {
+                        if fetchResults.object(at: i).localIdentifier == asset.localIdentifier {
+                            finalIndex = i
+                            break
+                        }
+                    }
+                }
+            }
             self.viewerFetchResult = fetchResults
+            self.viewerSessionId = UUID()
             withAnimation(.easeInOut(duration: 0.22)) {
                 self.viewerIndex = finalIndex
             }
@@ -963,10 +984,17 @@ struct MediaGridView: View {
             // Open group in viewer
             let ids = group.assets.map(\.localIdentifier)
             let groupFetch = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+            var finalIndex = 0
+            for i in 0..<groupFetch.count {
+                if groupFetch.object(at: i).localIdentifier == asset.localIdentifier {
+                    finalIndex = i
+                    break
+                }
+            }
             self.viewerFetchResult = groupFetch
-            let tappedIndex = group.assets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier }) ?? 0
+            self.viewerSessionId = UUID()
             withAnimation(.easeInOut(duration: 0.22)) {
-                self.viewerIndex = tappedIndex
+                self.viewerIndex = finalIndex
             }
         }
     }
@@ -982,10 +1010,17 @@ struct MediaGridView: View {
         } else {
             let ids = group.assets.map(\.localIdentifier)
             let groupFetch = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+            var finalIndex = 0
+            for i in 0..<groupFetch.count {
+                if groupFetch.object(at: i).localIdentifier == asset.localIdentifier {
+                    finalIndex = i
+                    break
+                }
+            }
             self.viewerFetchResult = groupFetch
-            let tappedIndex = group.assets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier }) ?? 0
+            self.viewerSessionId = UUID()
             withAnimation(.easeInOut(duration: 0.22)) {
-                self.viewerIndex = tappedIndex
+                self.viewerIndex = finalIndex
             }
         }
     }
@@ -1040,10 +1075,17 @@ struct MediaGridView: View {
         } else {
             let ids = scannerService.largeVideos.map(\.id)
             let groupFetch = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+            var finalIndex = 0
+            for i in 0..<groupFetch.count {
+                if groupFetch.object(at: i).localIdentifier == item.id {
+                    finalIndex = i
+                    break
+                }
+            }
             self.viewerFetchResult = groupFetch
-            let tappedIndex = scannerService.largeVideos.firstIndex(where: { $0.id == item.id }) ?? 0
+            self.viewerSessionId = UUID()
             withAnimation(.easeInOut(duration: 0.22)) {
-                self.viewerIndex = tappedIndex
+                self.viewerIndex = finalIndex
             }
         }
     }
@@ -1059,10 +1101,17 @@ struct MediaGridView: View {
         } else {
             let ids = group.assets.map(\.localIdentifier)
             let groupFetch = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+            var finalIndex = 0
+            for i in 0..<groupFetch.count {
+                if groupFetch.object(at: i).localIdentifier == asset.localIdentifier {
+                    finalIndex = i
+                    break
+                }
+            }
             self.viewerFetchResult = groupFetch
-            let tappedIndex = group.assets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier }) ?? 0
+            self.viewerSessionId = UUID()
             withAnimation(.easeInOut(duration: 0.22)) {
-                self.viewerIndex = tappedIndex
+                self.viewerIndex = finalIndex
             }
         }
     }

@@ -18,6 +18,7 @@ struct AlbumDetailView: View {
     @State private var isSelectMode: Bool = false
     @State private var selectedAssetIds: Set<String> = []
     @State private var viewerIndex: Int? = nil
+    @State private var viewerSessionId: UUID = UUID()
     @State private var showDeleteAlert: Bool = false
     
     init(album: AlbumItem, photoService: PhotoLibraryService) {
@@ -118,6 +119,7 @@ struct AlbumDetailView: View {
                                     isSelected: isSelected,
                                     photoService: photoService
                                 )
+                                .id(asset.localIdentifier)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -128,8 +130,23 @@ struct AlbumDetailView: View {
                                             selectedAssetIds.insert(asset.localIdentifier)
                                         }
                                     } else {
-                                        let trueIndex = results.index(of: asset)
-                                        let finalIndex = (trueIndex != NSNotFound) ? trueIndex : index
+                                        var finalIndex = index
+                                        if finalIndex < results.count && results.object(at: finalIndex).localIdentifier == asset.localIdentifier {
+                                            // Exact
+                                        } else {
+                                            let trueIndex = results.index(of: asset)
+                                            if trueIndex != NSNotFound && trueIndex < results.count {
+                                                finalIndex = trueIndex
+                                            } else {
+                                                for i in 0..<results.count {
+                                                    if results.object(at: i).localIdentifier == asset.localIdentifier {
+                                                        finalIndex = i
+                                                        break
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        viewerSessionId = UUID()
                                         withAnimation(.easeInOut(duration: 0.22)) {
                                             viewerIndex = finalIndex
                                         }
@@ -228,7 +245,7 @@ struct AlbumDetailView: View {
                     },
                     photoService: photoService
                 )
-                .id("album_viewer_\(index)_\(results.count)")
+                .id(viewerSessionId)
                 .transition(.opacity)
                 .zIndex(100)
             }

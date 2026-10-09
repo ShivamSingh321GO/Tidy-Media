@@ -15,6 +15,7 @@ struct MediaGridThumbnailCell: View {
     @ObservedObject var photoService: PhotoLibraryService
     
     @State private var thumbnail: UIImage? = nil
+    @State private var currentLoadedId: String? = nil
     @State private var requestID: PHImageRequestID? = nil
     
     init(asset: PHAsset, isSelectMode: Bool, isSelected: Bool, photoService: PhotoLibraryService) {
@@ -24,6 +25,7 @@ struct MediaGridThumbnailCell: View {
         self.photoService = photoService
         if let cached = photoService.cachedThumbnail(for: asset.localIdentifier) {
             self._thumbnail = State(initialValue: cached)
+            self._currentLoadedId = State(initialValue: asset.localIdentifier)
         }
     }
     
@@ -117,6 +119,9 @@ struct MediaGridThumbnailCell: View {
             .onAppear {
                 loadCellThumbnail()
             }
+            .onChange(of: asset.localIdentifier) { _, _ in
+                loadCellThumbnail()
+            }
             .onDisappear {
                 if let id = requestID {
                     photoService.cancelImageRequest(id)
@@ -126,14 +131,30 @@ struct MediaGridThumbnailCell: View {
     }
     
     private func loadCellThumbnail() {
-        guard thumbnail == nil else { return }
-        if let cached = photoService.cachedThumbnail(for: asset.localIdentifier) {
-            self.thumbnail = cached
+        if currentLoadedId == asset.localIdentifier && thumbnail != nil {
             return
         }
+        
+        if let id = requestID {
+            photoService.cancelImageRequest(id)
+            requestID = nil
+        }
+        
+        if let cached = photoService.cachedThumbnail(for: asset.localIdentifier) {
+            self.thumbnail = cached
+            self.currentLoadedId = asset.localIdentifier
+            return
+        }
+        
+        self.thumbnail = nil
+        self.currentLoadedId = asset.localIdentifier
+        
+        let targetId = asset.localIdentifier
         self.requestID = photoService.requestThumbnail(for: asset, targetSize: CGSize(width: 360, height: 360)) { img in
-            if let img = img {
-                self.thumbnail = img
+            if self.asset.localIdentifier == targetId {
+                if let img = img {
+                    self.thumbnail = img
+                }
             }
         }
     }

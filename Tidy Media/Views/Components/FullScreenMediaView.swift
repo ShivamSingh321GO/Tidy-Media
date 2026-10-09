@@ -58,8 +58,9 @@ struct FullScreenMediaView: View {
             if fetchResult.count > 0 {
                 TabView(selection: $currentIndex) {
                     ForEach(0..<fetchResult.count, id: \.self) { index in
+                        let asset = fetchResult.object(at: index)
                         SinglePhotoPageView(
-                            asset: fetchResult.object(at: index),
+                            asset: asset,
                             isCurrentPage: currentIndex == index,
                             isControlsVisible: isControlsVisible,
                             photoService: photoService,
@@ -69,6 +70,7 @@ struct FullScreenMediaView: View {
                                 }
                             }
                         )
+                        .id(asset.localIdentifier)
                         .tag(index)
                     }
                 }
@@ -181,6 +183,11 @@ struct FullScreenMediaView: View {
                 }
                 .opacity(max(0.0, 1.0 - Double(dragOffset.height / 150.0)))
                 .transition(.opacity)
+            }
+        }
+        .onAppear {
+            if currentIndex != initialIndex {
+                currentIndex = initialIndex
             }
         }
         .task(id: currentIndex) {
@@ -299,23 +306,10 @@ struct SinglePhotoPageView: View {
         self.photoService = photoService
         self.onTap = onTap
         
-        // Fast synchronous check of memory cache so preview opens immediately populated with zero blink
-        var cachedImg: UIImage? = photoService.cachedThumbnail(for: asset.localIdentifier)
-        if cachedImg == nil {
-            let options = PHImageRequestOptions()
-            options.isSynchronous = true
-            options.deliveryMode = .fastFormat
-            options.resizeMode = .fast
-            photoService.imageManager.requestImage(
-                for: asset,
-                targetSize: CGSize(width: 600, height: 600),
-                contentMode: .aspectFit,
-                options: options
-            ) { img, _ in
-                cachedImg = img
-            }
+        // Fast non-blocking check of memory cache so preview opens immediately if already in RAM
+        if let cached = photoService.cachedThumbnail(for: asset.localIdentifier) {
+            self._displayImage = State(initialValue: cached)
         }
-        self._displayImage = State(initialValue: cachedImg)
     }
     
     var body: some View {

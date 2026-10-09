@@ -896,6 +896,7 @@ struct StorageDuplicatesDetailView: View {
     @State private var selectedMediaKind: DuplicateMediaKind = .photos
     @State private var viewerIndex: Int? = nil
     @State private var viewerFetchResult: PHFetchResult<PHAsset>? = nil
+    @State private var viewerSessionId: UUID = UUID()
     @State private var showConfirmDeleteAll: Bool = false
     @State private var isDeleting: Bool = false
     
@@ -1007,7 +1008,7 @@ struct StorageDuplicatesDetailView: View {
                     },
                     photoService: photoService
                 )
-                .id("dup_viewer_\(index)_\(results.count)")
+                .id(viewerSessionId)
                 .transition(.opacity)
                 .zIndex(100)
             }
@@ -1157,6 +1158,7 @@ struct StorageDuplicatesDetailView: View {
                             isSelected: false,
                             photoService: photoService
                         )
+                        .id(asset.localIdentifier)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         
                         // Badge: KEEP or DUPLICATE
@@ -1246,6 +1248,7 @@ struct StorageDuplicatesDetailView: View {
                             isSelected: false,
                             photoService: photoService
                         )
+                        .id(asset.localIdentifier)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         
                         HStack(spacing: 2) {
@@ -1355,9 +1358,19 @@ struct StorageDuplicatesDetailView: View {
     
     // MARK: - Actions & Logic
     private func openGroupInViewer(assets: [PHAsset], selectedIndex: Int) {
+        guard selectedIndex < assets.count else { return }
+        let targetId = assets[selectedIndex].localIdentifier
         let fetch = PHAsset.fetchAssets(withLocalIdentifiers: assets.map(\.localIdentifier), options: nil)
+        var finalIndex = 0
+        for i in 0..<fetch.count {
+            if fetch.object(at: i).localIdentifier == targetId {
+                finalIndex = i
+                break
+            }
+        }
         self.viewerFetchResult = fetch
-        self.viewerIndex = selectedIndex
+        self.viewerSessionId = UUID()
+        self.viewerIndex = finalIndex
     }
     
     private func deletePhotoGroupDuplicates(_ group: DuplicatePhotoGroup) {

@@ -90,6 +90,15 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
     }()
     
     func cachedThumbnail(for assetId: String) -> UIImage? {
+        if let cached = thumbnailCache.object(forKey: "\(assetId)_360" as NSString) {
+            return cached
+        }
+        if let cached = thumbnailCache.object(forKey: "\(assetId)_400" as NSString) {
+            return cached
+        }
+        if let cached = thumbnailCache.object(forKey: "\(assetId)_600" as NSString) {
+            return cached
+        }
         return thumbnailCache.object(forKey: assetId as NSString)
     }
     
